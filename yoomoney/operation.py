@@ -1,17 +1,18 @@
-from datetime import datetime as dt
-from typing import Optional
+from datetime import datetime
+
 
 class Operation:
     def __init__(self,
                  operation_id: str = None,
                  status: str = None,
-                 datetime: Optional[dt] = None,
+                 datetime: datetime = None,
                  title: str = None,
                  pattern_id: str = None,
                  direction: str = None,
                  amount: float = None,
                  label: str = None,
                  type: str = None,
+                 json: dict = {}
                  ):
         self.operation_id = operation_id
         self.status = status
@@ -22,3 +23,4 @@ class Operation:
         self.amount = amount
         self.label = label
         self.type = type
+        self.json = json

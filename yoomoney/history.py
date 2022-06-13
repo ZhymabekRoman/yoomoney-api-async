@@ -1,11 +1,10 @@
 from datetime import datetime
 from typing import Optional
-import requests
+import aiohttp
 import json
+from .operation import Operation
 
-from yoomoney.operation.operation import Operation
-
-from yoomoney.exceptions import (
+from .exceptions import (
     IllegalParamType,
     IllegalParamStartRecord,
     IllegalParamRecords,
@@ -13,7 +12,7 @@ from yoomoney.exceptions import (
     IllegalParamFromDate,
     IllegalParamTillDate,
     TechnicalError
-    )
+)
 
 
 class History:
@@ -39,7 +38,7 @@ class History:
         self.label = label
         try:
             if from_date is not None:
-                from_date = "{Y}-{m}-{d}T{H}:{M}:{S}".format(
+                from_date = "{Y}-{m}-{d}T{H}:{M}:{S}+03:00".format(
                     Y=str(from_date.year),
                     m=str(from_date.month),
                     d=str(from_date.day),
@@ -47,12 +46,12 @@ class History:
                     M=str(from_date.minute),
                     S=str(from_date.second)
                 )
-        except:
+        except Exception:
             raise IllegalParamFromDate()
 
         try:
             if till_date is not None:
-                till_date = "{Y}-{m}-{d}T{H}:{M}:{S}".format(
+                till_date = "{Y}-{m}-{d}T{H}:{M}:{S}+03:00".format(
                     Y=str(till_date.year),
                     m=str(till_date.month),
                     d=str(till_date.day),
@@ -60,7 +59,7 @@ class History:
                     M=str(till_date.minute),
                     S=str(till_date.second)
                 )
-        except:
+        except Exception:
             IllegalParamTillDate()
 
         self.from_date = from_date
@@ -68,8 +67,10 @@ class History:
         self.start_record = start_record
         self.records = records
         self.details = details
+        self.operations = list()
 
-        data = self._request()
+    async def start(self):
+        data = await self._request()
 
         if "error" in data:
             if data["error"] == "illegal_param_type":
@@ -87,12 +88,6 @@ class History:
             else:
                 raise TechnicalError()
 
-
-        self.next_record = None
-        if "next_record" in data:
-            self.next_record = data["next_record"]
-
-        self.operations = list()
         for operation_data in data["operations"]:
             param = {}
             if "operation_id" in operation_data:
@@ -104,7 +99,8 @@ class History:
             else:
                 param["status"] = None
             if "datetime" in operation_data:
-                param["datetime"] = datetime.strptime(str(operation_data["datetime"]).replace("T", " ").replace("Z", ""), '%Y-%m-%d %H:%M:%S')
+                param["datetime"] = datetime.strptime(
+                    str(operation_data["datetime"]).replace("T", " ").replace("Z", ""), '%Y-%m-%d %H:%M:%S')
             else:
                 param["datetime"] = None
             if "title" in operation_data:
@@ -132,24 +128,23 @@ class History:
             else:
                 param["type"] = None
 
-
             operation = Operation(
-                operation_id= param["operation_id"],
+                operation_id=param["operation_id"],
                 status=param["status"],
-                datetime=datetime.strptime(str(param["datetime"]).replace("T", " ").replace("Z", ""), '%Y-%m-%d %H:%M:%S'),
+                datetime=datetime.strptime(str(param["datetime"]).replace("T", " ").replace("Z", ""),
+                                           '%Y-%m-%d %H:%M:%S'),
                 title=param["title"],
                 pattern_id=param["pattern_id"],
                 direction=param["direction"],
                 amount=param["amount"],
                 label=param["label"],
                 type=param["type"],
+                json=operation_data,
             )
             self.operations.append(operation)
+        return self
 
-
-
-    def _request(self):
-
+    async def _request(self):
         access_token = str(self.__private_token)
         url = self.__private_base_url + self.__private_method
 
@@ -174,6 +169,8 @@ class History:
         if self.details is not None:
             payload["details"] = self.details
 
-        response = requests.request("POST", url, headers=headers, data=payload)
+        async with aiohttp.ClientSession() as client:
+            async with client.post(url, headers=headers, data=payload) as response:
+                result = await response.text()
 
-        return response.json()
+        return json.loads(result)
